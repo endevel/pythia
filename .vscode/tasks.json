@@ -1,0 +1,33 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "pytest: все тесты",
+            "type": "shell",
+            "command": "uv run pytest",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ruff: проверка кода",
+            "type": "shell",
+            "command": "uv run ruff check .",
+            "problemMatcher": []
+        },
+        {
+            "label": "ruff: исправить и отформатировать",
+            "type": "shell",
+            "command": "uv run ruff check --fix . && uv run ruff format .",
+            "problemMatcher": []
+        },
+        {
+            "label": "pythia: запустить",
+            "type": "shell",
+            "command": "uv run pythia",
+            "problemMatcher": []
+        }
+    ]
+}

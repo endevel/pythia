@@ -1,13 +1,15 @@
-from pythia.core import Piece, Player
+from copy import copy
 
+from pythia.core import Player
+from pythia.core.piece import Piece
 
 class Fen:
     def __init__(self):
         self.__start_color = Player.WHITE
-        self.__pieces: set[Piece]
+        self.__pieces: list[Piece] = list()
 
     def _parse_pieces(self, fen: str):
-        piece = Piece(Player.WHITE, 0)
+        piece = Piece(Player.WHITE)
         # if fen[0].upper() == "W":
         #    piece = Piece(Player.WHITE, 0)
         if fen[0].upper() == "B":
@@ -24,7 +26,7 @@ class Fen:
                 piece_str = piece_str.replace(piece_str[0], "")
             square_ndx = int(piece_str)
             piece.set_square_ndx(square_ndx)
-            self.__pieces.add(piece)
+            self.__pieces.append(copy(piece))
 
     def parse(self, position: str):
         self.__pieces.clear()
@@ -38,5 +40,5 @@ class Fen:
         return self.__start_color
 
     @property
-    def pieces(self) -> set[Piece]:
+    def pieces(self) -> list[Piece]:
         return self.__pieces

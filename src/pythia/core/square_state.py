@@ -9,9 +9,9 @@ class SquareState(Enum):
     """
 
     EMPTY = 0
-    WHITE_PIECE = 1
+    WHITE_MAN = 1
     WHITE_KING = 2
-    BLACK_PIECE = 3
+    BLACK_MAN = 3
     BLACK_KING = 4
     TAKEN = 5
     OUT_OF_BOARD = 6

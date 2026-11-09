@@ -20,6 +20,8 @@ class MoveGenerator:
         self._board = board
         self._rules = rules
         self._stride = board.width + 2
+        self._move_left = self._stride + 1
+        self._move_right = self._stride - 1
         # Отображение внутреннего индекса -> номер игрового поля (1..N).
         self._number_of = {ndx: board.number_at(ndx) for ndx in board}
         # Рабочая копия состояний игровых клеток; Damboard не мутируется (п.4).
@@ -32,10 +34,10 @@ class MoveGenerator:
 
         Алгоритм DFS по дереву взятий и генерация тихих ходов — п.4 movegen.md.
         """
-        for ndx in self._pieces_of(player):
-            # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
-            pass
-        raise NotImplementedError("Генерация ходов — п.4 movegen.md")
+        # Сначала ищем взятия (обязательны), при их отсутствии — тихие ходы.
+        if player == Player.WHITE:
+            return self._generate_all_white_moves()
+        return self._generate_all_black_moves()
 
     def promotion_squares(self, player: Player) -> frozenset[int]:
         """Поля (внутренние индексы), где простая игрока становится дамкой.
@@ -83,3 +85,151 @@ class MoveGenerator:
                 if ndx in self._number_of:
                     squares.add(ndx)
         return frozenset(squares)
+
+    def _generate_all_white_moves(self) -> list[Move]:
+        """Все ходы белых: взятия (обязательны), иначе тихие ходы."""
+        moves = self._generate_white_captures()
+        if not moves:
+            moves = self._generate_white_moves()
+        return moves
+
+    def _generate_all_black_moves(self) -> list[Move]:
+        """Все ходы чёрных: взятия (обязательны), иначе тихие ходы."""
+        moves = self._generate_black_captures()
+        if not moves:
+            moves = self._generate_black_moves()
+        return moves
+
+    def _generate_white_moves(self) -> list[Move]:
+        """Все ходы белых фигур."""
+        moves: list[Move] = []
+        for ndx in self._pieces_of(Player.WHITE):
+            # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+            if self._states[ndx] == SquareState.WHITE_MAN:
+                moves.extend(self._generate_white_man_moves(ndx))
+            elif self._states[ndx] == SquareState.WHITE_KING:
+                moves.extend(self._generate_white_king_moves(ndx))
+        return moves
+
+    def _generate_white_captures(self) -> list[Move]:
+        """Все взятия белых фигур."""
+        moves: list[Move] = []
+        for ndx in self._pieces_of(Player.BLACK):
+            # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+            if self._states[ndx] == SquareState.BLACK_MAN:
+                moves.extend(self._generate_white_man_captures(ndx))
+            elif self._states[ndx] == SquareState.BLACK_KING:
+                moves.extend(self._generate_white_king_captures(ndx))
+        return moves
+
+    def _generate_white_man_captures(self, ndx: int) -> list[Move]:
+        """Все взятия белых простых фигур."""
+        moves: list[Move] = []
+        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        return moves
+
+    def _generate_white_king_captures(self, ndx: int) -> list[Move]:
+        """Все взятия белых дамок."""
+        moves: list[Move] = []
+        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        return moves
+
+    def _generate_white_man_moves(self, ndx: int) -> list[Move]:
+        """Все тихие ходы белой простой: два соседних поля на `EMPTY`.
+
+        Белые движутся в сторону уменьшения внутренних индексов (вверх
+        по доске), поэтому оба соседних  поля получаются вычитанием
+        `self._move_left` и `self._move_right`.
+        """
+        moves: list[Move] = []
+        for delta in (-self._move_left, -self._move_right):
+            next_ndx = ndx + delta
+            # Клетки «бортика» не входят в `self._states` (см. `__init__`),
+            # поэтому проверка `in` эквивалентна проверке `OUT_OF_BOARD`.
+            if next_ndx in self._states and self._states[next_ndx] == SquareState.EMPTY:
+                moves.append(
+                    Move(
+                        # `Move.path` хранит номера игровых полей (1..N),
+                        # а не внутренние индексы (пп. 3–4 movegen.md).
+                        path=(self._number_of[ndx], self._number_of[next_ndx]),
+                        # Для тихого хода `captured` — пустой кортеж,
+                        # а не `None`: `Move.captured: tuple[int, ...]`.
+                        captured=(),
+                        # Пешка, завершившая ход на строке превращения,
+                        # получает `promotes=True` (п.4 movegen.md).
+                        promotes=next_ndx in self._promotion_squares[Player.WHITE],
+                    )
+                )
+        return moves
+
+    def _generate_white_king_moves(self, ndx: int) -> list[Move]:
+        """Все ходы белых дамок."""
+        moves: list[Move] = []
+        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        return moves
+
+    def _generate_black_moves(self) -> list[Move]:
+        """Все ходы чорных фигур."""
+        moves: list[Move] = []
+        for ndx in self._pieces_of(Player.BLACK):
+            # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+            if self._states[ndx] == SquareState.BLACK_MAN:
+                moves.extend(self._generate_black_man_moves(ndx))
+            elif self._states[ndx] == SquareState.BLACK_KING:
+                moves.extend(self._generate_black_king_moves(ndx))
+        return moves
+
+    def _generate_black_captures(self) -> list[Move]:
+        """Все взятия черных фигур."""
+        moves: list[Move] = []
+        for ndx in self._pieces_of(Player.BLACK):
+            # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+            pass
+        return moves
+
+    def _generate_black_man_captures(self, ndx: int) -> list[Move]:
+        """Все взятия чорных простых фигур."""
+        moves: list[Move] = []
+        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        return moves
+
+    def _generate_black_king_captures(self, ndx: int) -> list[Move]:
+        """Все взятия чорных дамок."""
+        moves: list[Move] = []
+        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        return moves
+
+    def _generate_black_man_moves(self, ndx: int) -> list[Move]:
+        """Все тихие ходы чёрной простой: проверяем два соседних поля на `EMPTY`.
+
+        Чёрные движутся в сторону увеличения внутренних индексов (вниз
+        по доске), поэтому оба соседних поля получаются сложением
+        `self._move_left` и `self._move_right`.
+        """
+        moves: list[Move] = []
+        for delta in (self._move_left, self._move_right):
+            next_ndx = ndx + delta
+            # Клетки «бортика» не входят в `self._states` (см. `__init__`),
+            # поэтому проверка `in` эквивалентна проверке `OUT_OF_BOARD`.
+            if next_ndx in self._states and self._states[next_ndx] == SquareState.EMPTY:
+                moves.append(
+                    Move(
+                        # `Move.path` хранит номера игровых полей (1..N),
+                        # а не внутренние индексы (пп. 3–4 movegen.md).
+                        path=(self._number_of[ndx], self._number_of[next_ndx]),
+                        # Для тихого хода `captured` — пустой кортеж,
+                        # а не `None`: `Move.captured: tuple[int, ...]`.
+                        captured=(),
+                        # Пешка, завершившая ход на строке превращения,
+                        # получает `promotes=True` (п.4 movegen.md).
+                        promotes=next_ndx in self._promotion_squares[Player.BLACK],
+                    )
+                )
+        return moves
+
+    def _generate_black_king_moves(self, ndx: int) -> list[Move]:
+        """Все ходы чорных дамок."""
+        moves: list[Move] = []
+        return moves
+
+        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.

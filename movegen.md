@@ -13,8 +13,14 @@
   доску» сводится к сравнению состояния с `OUT_OF_BOARD` — не нужны проверки
   координат.
 - `board_map` — отображение номера игрового поля (1..N, FMJD-нумерация, как в
-  FEN/PDN) во внутренний индекс плоского массива.
-- `white_pieces` / `black_pieces` — готовые списки фигур по сторонам.
+  FEN/PDN) во внутренний индекс плоского массива; обратное отображение —
+  `number_at(ndx)`.
+- `white_pieces` / `black_pieces` — готовые списки фигур по сторонам в виде
+  номеров полей (не внутренних индексов).
+- read-only доступ к состояниям: `state(ndx)` — состояние клетки по внутреннему
+  индексу. Генератору достаточно этого набора, мутации не нужны: рабочую
+  позицию он держит у себя (см. п.4), `Damboard` остаётся неизменяемым
+  источником истины.
 - `BoardSize.STANDARD` (8×8 — русские) и `BoardSize.BIG` (10×10 —
   международные) — сам размер уже параметризован, геометрия ходов одинакова.
 
@@ -22,22 +28,7 @@
 `±(width+3)` и `±(width+1)`, где `stride = width + 2`. Благодаря бортику
 сдвиг «насквозь» всегда упирается в `OUT_OF_BOARD`.
 
-## 2. Чего не хватает `Damboard` (минимум правок)
-
-Поля приватные (name-mangling), поэтому в `damboard.py` стоит добавить тонкий
-read-only API:
-
-- `state(ndx)` — состояние клетки по внутреннему индексу;
-- `number_at(ndx)` — обратное отображение (внутренний индекс → номер поля),
-  сейчас есть только прямое;
-- у `white_pieces`/`black_pieces` возвращаются внутренние индексы, а не номера
-  полей — стоит отдавать номера полей (для генератора и PDN-нотации это одно и
-  то же множество, но в «правильных» координатах).
-
-Мутирующие методы генератору не нужны: рабочую позицию он держит у себя
-(см. ниже), `Damboard` остаётся неизменяемым источником истины.
-
-## 3. Универсальность — правила как данные (Strategy)
+## 2. Универсальность — правила как данные (Strategy)
 
 Различия русских и международных шашек не алгоритмические, а параметрические.
 Поэтому генератор один, а вариативность — в объекте правил:
@@ -48,18 +39,18 @@ from enum import Enum, auto
 
 
 class CapturePriority(Enum):
-    FREE_CHOICE = auto()        # русские: любая цепочка взятия допустима
-    MAX_MAJORITY = auto()       # международные: обязательное «правило большинства»
+    FREE_CHOICE = auto()  # русские: любая цепочка взятия допустима
+    MAX_MAJORITY = auto()  # международные: обязательное «правило большинства»
 
 
 class MidCapturePromotion(Enum):
-    CONTINUE_AS_MAN = auto()    # международные: если простая в ходе взятия достигла
-                                # дамочного поля и далее может бить как простая шашка,
-                                # она обязана это сделать и при этом остаётся простой
-                                # до конца хода
-    PROMOTES_AT_ONCE = auto()   # русские: простая превращается в дамку сразу, как
-                                # только достигла дамочного поля, и продолжает бой
-                                # уже как дамка
+    CONTINUE_AS_MAN = auto()  # международные: если простая в ходе взятия достигла
+    # дамочного поля и далее может бить как простая шашка,
+    # она обязана это сделать и при этом остаётся простой
+    # до конца хода
+    PROMOTES_AT_ONCE = auto()  # русские: простая превращается в дамку сразу, как
+    # только достигла дамочного поля, и продолжает бой
+    # уже как дамка
 
 
 @dataclass(frozen=True)
@@ -89,7 +80,7 @@ INTERNATIONAL = Rules(MidCapturePromotion.CONTINUE_AS_MAN, CapturePriority.MAX_M
 взятий в обоих вариантах, а фильтр «оставить только ходы с максимальной длиной
 `captured`» включается только для `MAX_MAJORITY`.
 
-## 4. Структура пакета `movegen`
+## 3. Структура пакета `movegen`
 
 ```
 src/pythia/movegen/
@@ -105,8 +96,8 @@ src/pythia/movegen/
 ```python
 @dataclass(frozen=True)
 class Move:
-    path: tuple[int, ...]       # номера полей: исходное → ... → конечное
-    captured: tuple[int, ...]   # номера побитых полей (пусто для тихого хода)
+    path: tuple[int, ...]  # номера полей: исходное → ... → конечное
+    captured: tuple[int, ...]  # номера побитых полей (пусто для тихого хода)
     promotes: bool = False
 
     @property
@@ -114,7 +105,7 @@ class Move:
         return bool(self.captured)
 ```
 
-## 5. Алгоритм генератора
+## 4. Алгоритм генератора
 
 Ключевой приём: **не мутируем `Damboard`**, а держим копию состояний
 `dict[int, SquareState]` (внутренний индекс → состояние). Битую шашку помечаем
@@ -132,7 +123,7 @@ class MoveGenerator:
         self._board = board
         self._rules = rules
         self._stride = board.width + 2
-        self._number_of = {ndx: i + 1 for i, ndx in enumerate(board)}  # board_map наоборот
+        self._number_of = {ndx: board.number_at(ndx) for ndx in board}  # board_map наоборот
         self._states = {ndx: board.state(ndx) for ndx in self._number_of}
 
     def generate(self, player: Player) -> list[Move]:
@@ -144,23 +135,21 @@ class MoveGenerator:
     # --- взятия: DFS по всем продолжениям ---
     def _captures_from(self, ndx, path, captured, out) -> None:
         extended = False
-        for direction in (-self._stride - 1, -self._stride + 1,
-                          self._stride - 1, self._stride + 1):
+        for direction in (-self._stride - 1, -self._stride + 1, self._stride - 1, self._stride + 1):
             victim, landings = self._victim_and_landings(ndx, direction)
             for landing in landings:
                 extended = True
-                self._apply(ndx, landing, victim)          # victim -> TAKEN, фигура -> landing
-                self._captures_from(landing, [*path, landing],
-                                    [*captured, victim], out)
-                self._undo(ndx, landing, victim)           # откат
+                self._apply(ndx, landing, victim)  # victim -> TAKEN, фигура -> landing
+                self._captures_from(landing, [*path, landing], [*captured, victim], out)
+                self._undo(ndx, landing, victim)  # откат
 
         if captured and not extended:
             out.append(self._make_move(ndx, path, captured))
 
     def _victim_and_landings(self, ndx, direction) -> tuple[int | None, list[int]]:
         if self._is_king(ndx):
-            return self._scan_king(ndx, direction)   # скользим по лучу
-        return self._scan_man(ndx, direction)        # соседняя диагональ
+            return self._scan_king(ndx, direction)  # скользим по лучу
+        return self._scan_man(ndx, direction)  # соседняя диагональ
 ```
 
 Логика `_scan_king` — сердце универсальности:
@@ -201,7 +190,7 @@ DFS это учитывает автоматически: ранг фигуры 
 каждом шаге рекурсии, поэтому смена ранга посреди цепочки взятий просто
 меняет результат `_victim_and_landings` для следующих шагов.
 
-## 6. DoMove / UndoMove при поиске лучшего хода
+## 5. DoMove / UndoMove при поиске лучшего хода
 
 `Move` намеренно хранит только номера полей — этого достаточно для PDN,
 анимации и сортировки ходов, но **не достаточно** для самостоятельного полного
@@ -233,7 +222,7 @@ DFS это учитывает автоматически: ранг фигуры 
 (`captured: tuple[tuple[int, Rank], ...]`) — самодостаточнее, но дублирует
 данные и утяжеляет структуру, которая нужна нотации и анимации «в тонком» виде.
 
-### 6.1. Undo-запись: структура
+### 5.1. Undo-запись: структура
 
 Undo-запись — это снимок состояний **всех клеток, которые `do_move` собирается
 изменить**, снятый строго **до** мутации:
@@ -259,7 +248,7 @@ class _UndoRecord:
   (побитая дамка вернётся дамкой), и промежуточные превращения;
 - порядок пар внутри кортежа не важен, все индексы в записи различны.
 
-### 6.2. do_move: какие клетки пишутся в запись
+### 5.2. do_move: какие клетки пишутся в запись
 
 `do_move` затрагивает ровно `len(move.captured) + 2` клеток:
 
@@ -274,7 +263,7 @@ class _UndoRecord:
 ```python
 class MoveGenerator:
     def __init__(self, board: Damboard, rules: Rules):
-        # ... как в п.5 ...
+        # ... как в п.4 ...
         self._undo_stack: list[_UndoRecord] = []
 
     def do_move(self, move: Move) -> None:
@@ -308,7 +297,7 @@ class MoveGenerator:
 и для отката через стек этого достаточно: снапшот хранит исходное состояние
 `path[0]` (простая), которое и вернётся при undo.
 
-### 6.3. undo_move: чтение записи
+### 5.3. undo_move: чтение записи
 
 Откат — тупо восстановление всех пар из снятой со стека записи:
 
@@ -323,7 +312,7 @@ class MoveGenerator:
 `is_capture`/`promotes` при откате анализировать не нужно — вся информация
 уже в снапшоте.
 
-### 6.4. Пример
+### 5.4. Пример
 
 Международные шашки: белая дамка с поля 46 бьёт 41 (чёрная простая) и 32
 (чёрная дамка), останавливается на 37.
@@ -331,12 +320,14 @@ class MoveGenerator:
 Снапшот в стеке:
 
 ```python
-_UndoRecord((
-    (46, SquareState.WHITE_KING),
-    (37, SquareState.EMPTY),
-    (41, SquareState.BLACK_MAN),
-    (32, SquareState.BLACK_KING),
-))
+_UndoRecord(
+    (
+        (46, SquareState.WHITE_KING),
+        (37, SquareState.EMPTY),
+        (41, SquareState.BLACK_MAN),
+        (32, SquareState.BLACK_KING),
+    )
+)
 ```
 
 После `do_move`: `46 → EMPTY`, `37 → WHITE_KING`, `41/32 → TAKEN`.
@@ -344,7 +335,7 @@ _UndoRecord((
 что поле 32 было именно **дамкой** — единственная информация, которую
 `Move` сам по себе теряет.
 
-### 6.5. Свойства стека и почему этого достаточно
+### 5.5. Свойства стека и почему этого достаточно
 
 - Хранилище — обычный `list[_UndoRecord]` с жёстким LIFO: поиск (alpha-beta)
   всегда вызывает `do_move`/`undo_move` строго парами, поэтому к корню
@@ -365,7 +356,7 @@ _UndoRecord((
   механизма не пересекаются: DFS порождает ходы, `do/undo` — применяет их
   при переборе.
 
-## 7. Итоговая таблица различий → один параметр на различие
+## 6. Итоговая таблица различий → один параметр на различие
 
 | Отличие | Русские | Международные | Где живёт |
 |---|---|---|---|

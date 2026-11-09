@@ -19,10 +19,16 @@ class Damboard:
         self.__board_size = board_size
         self.__squares = []
         self.__board_map = []
+        self.__number_map: dict[int, int] = {}
         self.__white_pieces = set()
         self.__black_pieces = set()
         self.__board_init = board_init
         board_init(self.__board_size, self.__squares, self.__board_map)
+        self.__rebuild_number_map()
+
+    def __rebuild_number_map(self):
+        # Обратное отображение: внутренний индекс -> номер игрового поля (1..N).
+        self.__number_map = {ndx: number + 1 for number, ndx in enumerate(self.__board_map)}
 
     def __getitem__(self, index):
         return self.__squares[index]
@@ -32,6 +38,9 @@ class Damboard:
 
     def clear(self):
         self.__board_init(self.__board_size, self.__squares, self.__board_map)
+        self.__rebuild_number_map()
+        self.__white_pieces.clear()
+        self.__black_pieces.clear()
 
     def remove_piece(self, square_ndx: int):
         ndx = self.__board_map[square_ndx - 1]
@@ -56,6 +65,14 @@ class Damboard:
         for piece in fen.pieces:
             self.set_piece(piece)
 
+    def state(self, ndx: int) -> SquareState:
+        """Состояние клетки по внутреннему индексу плоского массива."""
+        return self.__squares[ndx]
+
+    def number_at(self, ndx: int) -> int:
+        """Обратное отображение: внутренний индекс -> номер игрового поля (1..N)."""
+        return self.__number_map[ndx]
+
     @property
     def height(self) -> int:
         return self.__board_size.height
@@ -66,8 +83,8 @@ class Damboard:
 
     @property
     def white_pieces(self) -> set[int]:
-        return self.__white_pieces
+        return {self.__number_map[ndx] for ndx in self.__white_pieces}
 
     @property
     def black_pieces(self) -> set[int]:
-        return self.__black_pieces
+        return {self.__number_map[ndx] for ndx in self.__black_pieces}

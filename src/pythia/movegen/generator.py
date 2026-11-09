@@ -22,6 +22,13 @@ class MoveGenerator:
         self._stride = board.width + 2
         self._move_left = self._stride + 1
         self._move_right = self._stride - 1
+        # Все четыре диагонали: дамка бьёт в любом направлении (п.4 movegen.md).
+        self._diagonals = (
+            -self._move_left,
+            -self._move_right,
+            self._move_left,
+            self._move_right,
+        )
         # Отображение внутреннего индекса -> номер игрового поля (1..N).
         self._number_of = {ndx: board.number_at(ndx) for ndx in board}
         # Рабочая копия состояний игровых клеток; Damboard не мутируется (п.4).
@@ -114,11 +121,10 @@ class MoveGenerator:
     def _generate_white_captures(self) -> list[Move]:
         """Все взятия белых фигур."""
         moves: list[Move] = []
-        for ndx in self._pieces_of(Player.BLACK):
-            # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
-            if self._states[ndx] == SquareState.BLACK_MAN:
+        for ndx in self._pieces_of(Player.WHITE):
+            if self._states[ndx] == SquareState.WHITE_MAN:
                 moves.extend(self._generate_white_man_captures(ndx))
-            elif self._states[ndx] == SquareState.BLACK_KING:
+            elif self._states[ndx] == SquareState.WHITE_KING:
                 moves.extend(self._generate_white_king_captures(ndx))
         return moves
 
@@ -131,8 +137,95 @@ class MoveGenerator:
     def _generate_white_king_captures(self, ndx: int) -> list[Move]:
         """Все взятия белых дамок."""
         moves: list[Move] = []
-        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        self._king_captures_from(
+            ndx,
+            [ndx],
+            [],
+            moves,
+            own=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
+            king=SquareState.WHITE_KING,
+        )
         return moves
+
+    def _king_captures_from(
+        self,
+        ndx: int,
+        path: list[int],
+        captured: list[int],
+        out: list[Move],
+        own: tuple[SquareState, SquareState],
+        king: SquareState,
+    ) -> None:
+        """DFS по дереву взятий дамки из `ndx` — общий для обоих цветов (п.4).
+
+        `path` содержит внутренние индексы: исходное поле и все поля
+        приземления, `captured` — внутренние индексы побитых фигур.
+        По каждой из четырёх диагоналей `_scan_king` возвращает жертву и
+        все поля приземления за ней; каждое приземление — точка ветвления
+        DFS. Полная цепочка взятия фиксируется в `out`, когда ни одного
+        продолжения найти не удалось.
+        """
+        extended = False
+        for delta in self._diagonals:
+            victim, landings = self._scan_king(ndx, delta, own)
+            if victim is None:
+                continue
+            for landing in landings:
+                extended = True
+                saved_victim = self._states[victim]
+                # Применяем шаг: жертва -> TAKEN, дамка -> landing.
+                self._states[ndx] = SquareState.EMPTY
+                self._states[victim] = SquareState.TAKEN
+                self._states[landing] = king
+                self._king_captures_from(
+                    landing,
+                    [*path, landing],
+                    [*captured, victim],
+                    out,
+                    own,
+                    king,
+                )
+                # Откат шага (жертва и посадка известны локально в кадре).
+                self._states[landing] = SquareState.EMPTY
+                self._states[victim] = saved_victim
+                self._states[ndx] = king
+        if captured and not extended:
+            out.append(
+                Move(
+                    # `Move.path`/`Move.captured` хранят номера игровых полей
+                    # (1..N), а не внутренние индексы (пп. 3–4 movegen.md).
+                    path=tuple(self._number_of[s] for s in path),
+                    captured=tuple(self._number_of[v] for v in captured),
+                )
+            )
+
+    def _scan_king(
+        self,
+        ndx: int,
+        delta: int,
+        own: tuple[SquareState, SquareState],
+    ) -> tuple[int | None, list[int]]:
+        """Жертва и все поля приземления за ней по лучу `delta` (п.4 movegen.md).
+
+        1. скольжение по лучу: `EMPTY` — пропускаем;
+        2. `TAKEN` или своя фигура — взятия в направлении нет: битую шашку
+           нельзя перепрыгивать вторично, свою перепрыгивать нельзя;
+        3. чужая фигура — жертва; дальше собираем все пустые клетки сразу
+           за ней до первого препятствия: дамка может остановиться на любом
+           из них (общее правило для русских и международных шашек).
+        """
+        cur = ndx + delta
+        while cur in self._states and self._states[cur] == SquareState.EMPTY:
+            cur += delta
+        if cur not in self._states or self._states[cur] in (SquareState.TAKEN, *own):
+            return None, []
+        victim = cur
+        cur += delta
+        landings: list[int] = []
+        while cur in self._states and self._states[cur] == SquareState.EMPTY:
+            landings.append(cur)
+            cur += delta
+        return victim, landings
 
     def _generate_white_man_moves(self, ndx: int) -> list[Move]:
         """Все тихие ходы белой простой: два соседних поля на `EMPTY`.
@@ -163,9 +256,30 @@ class MoveGenerator:
         return moves
 
     def _generate_white_king_moves(self, ndx: int) -> list[Move]:
-        """Все ходы белых дамок."""
+        """Все тихие ходы белой дамки: скольжение по всем четырём диагоналям.
+
+        Дамка движется в любом направлении до первого препятствия,
+        поэтому геометрия одинакова для обоих цветов: каждая пустая
+        клетка на луче — точка приземления (п.4 movegen.md).
+        """
+
         moves: list[Move] = []
-        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        for delta in self._diagonals:
+            next_ndx = ndx + delta
+            # Клетки «бортика» не входят в `self._states` (см. `__init__`),
+            # поэтому проверка `in` эквивалентна проверке `OUT_OF_BOARD`.
+            while next_ndx in self._states and self._states[next_ndx] == SquareState.EMPTY:
+                moves.append(
+                    Move(
+                        # `Move.path` хранит номера игровых полей (1..N),
+                        # а не внутренние индексы (пп. 3–4 movegen.md).
+                        path=(self._number_of[ndx], self._number_of[next_ndx]),
+                        # Для тихого хода `captured` — пустой кортеж,
+                        # а не `None`: `Move.captured: tuple[int, ...]`.
+                        captured=(),
+                    )
+                )
+                next_ndx += delta
         return moves
 
     def _generate_black_moves(self) -> list[Move]:
@@ -183,8 +297,10 @@ class MoveGenerator:
         """Все взятия черных фигур."""
         moves: list[Move] = []
         for ndx in self._pieces_of(Player.BLACK):
-            # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
-            pass
+            if self._states[ndx] == SquareState.BLACK_MAN:
+                moves.extend(self._generate_black_man_captures(ndx))
+            elif self._states[ndx] == SquareState.BLACK_KING:
+                moves.extend(self._generate_black_king_captures(ndx))
         return moves
 
     def _generate_black_man_captures(self, ndx: int) -> list[Move]:
@@ -196,7 +312,14 @@ class MoveGenerator:
     def _generate_black_king_captures(self, ndx: int) -> list[Move]:
         """Все взятия чорных дамок."""
         moves: list[Move] = []
-        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        self._king_captures_from(
+            ndx,
+            [ndx],
+            [],
+            moves,
+            own=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
+            king=SquareState.BLACK_KING,
+        )
         return moves
 
     def _generate_black_man_moves(self, ndx: int) -> list[Move]:
@@ -228,8 +351,28 @@ class MoveGenerator:
         return moves
 
     def _generate_black_king_moves(self, ndx: int) -> list[Move]:
-        """Все ходы чорных дамок."""
-        moves: list[Move] = []
-        return moves
+        """Все тихие ходы чорной дамки: скольжение по всем четырём диагоналям.
 
-        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+        Дамка движется в любом направлении до первого препятствия,
+        поэтому геометрия одинакова для обоих цветов: каждая пустая
+        клетка на луче — точка приземления (п.4 movegen.md).
+        """
+
+        moves: list[Move] = []
+        for delta in self._diagonals:
+            next_ndx = ndx + delta
+            # Клетки «бортика» не входят в `self._states` (см. `__init__`),
+            # поэтому проверка `in` эквивалентна проверке `OUT_OF_BOARD`.
+            while next_ndx in self._states and self._states[next_ndx] == SquareState.EMPTY:
+                moves.append(
+                    Move(
+                        # `Move.path` хранит номера игровых полей (1..N),
+                        # а не внутренние индексы (пп. 3–4 movegen.md).
+                        path=(self._number_of[ndx], self._number_of[next_ndx]),
+                        # Для тихого хода `captured` — пустой кортеж,
+                        # а не `None`: `Move.captured: tuple[int, ...]`.
+                        captured=(),
+                    )
+                )
+                next_ndx += delta
+        return moves

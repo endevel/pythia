@@ -32,6 +32,9 @@ class MoveGenerator:
 
         Алгоритм DFS по дереву взятий и генерация тихих ходов — п.4 movegen.md.
         """
+        for ndx in self._pieces_of(player):
+            # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
+            pass
         raise NotImplementedError("Генерация ходов — п.4 movegen.md")
 
     def promotion_squares(self, player: Player) -> frozenset[int]:

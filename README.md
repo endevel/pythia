@@ -45,7 +45,13 @@ src/pythia/
 │   ├── evaluation.py  # Оценка позиции (интерфейс Evaluator, MaterialEvaluator)
 │   └── search.py      # Негмакс с альфа-бета отсечениями
 └── pdn/            # Формат PDN
-    └── fen.py         # Разбор FEN-позиции
+    ├── fen.py         # Разбор FEN-позиции
+    └── parser.py      # Разбор PDN-нотации
+tests/
+├── test_damboard/  # Тесты представления доски
+├── test_movegen/   # Тесты генерации ходов и perft
+├── test_pdn/       # Тесты разбора PDN
+└── test_search/    # Тесты поиска и оценки позиции
 ```
 
 ## Требования

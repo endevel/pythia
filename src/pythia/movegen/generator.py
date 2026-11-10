@@ -2,15 +2,37 @@
 
 `Damboard` остаётся неизменяемым источником истины: рабочая позиция
 генератора живёт в собственной копии состояний `self._states`.
+
+Для модуля поиска генератор дополнительно предоставляет `make_move`/
+`unmake_move` — применение и откат хода в рабочей позиции без пересоздания
+генератора (пп. 5 search.md).
 """
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from pythia.core.player import Player
 from pythia.core.square_state import SquareState
 from pythia.damboard.damboard import Damboard
 from pythia.movegen.move import Move
-from pythia.movegen.rules import Rules
+from pythia.movegen.rules import CapturePriority, MidCapturePromotion, Rules
+
+
+@dataclass(frozen=True)
+class MoveUndo:
+    """Данные для отката хода, применённого `MoveGenerator.make_move`.
+
+    Attributes:
+        origin: внутренний индекс исходного поля ходившей фигуры.
+        landing: внутренний индекс поля приземления.
+        origin_state: состояние ходившей фигуры до хода (для отката).
+        victims: внутренние индексы побитых фигур -> их состояние до хода.
+    """
+
+    origin: int
+    landing: int
+    origin_state: SquareState
+    victims: dict[int, SquareState]
 
 
 class MoveGenerator:
@@ -31,6 +53,8 @@ class MoveGenerator:
         )
         # Отображение внутреннего индекса -> номер игрового поля (1..N).
         self._number_of = {ndx: board.number_at(ndx) for ndx in board}
+        # Обратное отображение: номер игрового поля (1..N) -> внутренний индекс.
+        self._ndx_of = {number: ndx for ndx, number in self._number_of.items()}
         # Рабочая копия состояний игровых клеток; Damboard не мутируется (п.4).
         self._states = {ndx: board.state(ndx) for ndx in self._number_of}
         # Поля превращения простой в дамку (внутренние индексы), по игрокам.
@@ -45,6 +69,65 @@ class MoveGenerator:
         if player == Player.WHITE:
             return self._generate_all_white_moves()
         return self._generate_all_black_moves()
+
+    def state(self, ndx: int) -> SquareState:
+        """Состояние клетки рабочей позиции по внутреннему индексу."""
+        return self._states[ndx]
+
+    @property
+    def states(self) -> dict[int, SquareState]:
+        """Рабочая позиция: внутренний индекс -> состояние клетки.
+
+        Возвращает ссылку на внутренний словарь (без копирования) —
+        используется оценщиком в «горячем» цикле поиска; мутация извне
+        не предполагается.
+        """
+        return self._states
+
+    def ndx_of(self, square: int) -> int:
+        """Внутренний индекс игрового поля `square` (номер 1..N)."""
+        return self._ndx_of[square]
+
+    def make_move(self, move: Move, player: Player) -> MoveUndo:
+        """Применяет ход к рабочей позиции; возвращает данные для отката.
+
+        Финальное состояние ходившей фигуры: при `move.promotes` — дамка
+        (превращение в конце тихого хода либо по завершении цепочки
+        взятия), иначе — исходное состояние (ранг сохраняется). Побитые
+        фигуры переводятся в `TAKEN`.
+        """
+        origin = self._ndx_of[move.path[0]]
+        landing = self._ndx_of[move.path[-1]]
+        origin_state = self._states[origin]
+        victims = {
+            self._ndx_of[n]: self._states[self._ndx_of[n]] for n in move.captured
+        }
+        final = (
+            (
+                SquareState.WHITE_KING
+                if player == Player.WHITE
+                else SquareState.BLACK_KING
+            )
+            if move.promotes
+            else origin_state
+        )
+        self._states[origin] = SquareState.EMPTY
+        for victim in victims:
+            self._states[victim] = SquareState.TAKEN
+        self._states[landing] = final
+        return MoveUndo(
+            origin=origin,
+            landing=landing,
+            origin_state=origin_state,
+            victims=victims,
+        )
+
+    def unmake_move(self, undo: MoveUndo) -> None:
+        """Откатывает ход, применённый `make_move`."""
+        self._states[undo.landing] = SquareState.EMPTY
+        for victim, victim_state in undo.victims.items():
+            self._states[victim] = victim_state
+        self._states[undo.origin] = undo.origin_state
 
     def promotion_squares(self, player: Player) -> frozenset[int]:
         """Поля (внутренние индексы), где простая игрока становится дамкой.
@@ -118,6 +201,20 @@ class MoveGenerator:
                 moves.extend(self._generate_white_king_moves(ndx))
         return moves
 
+    def _filter_max_majority(self, moves: list[Move]) -> list[Move]:
+        """«Правило большинства» международных шашек: остаются только взятия
+        с наибольшим числом побитых фигур (самый длинный `captured`).
+
+        Для русских шашек (`FREE_CHOICE`) список возвращается без изменений.
+        """
+        if (
+            self._rules.capture_priority is not CapturePriority.MAX_MAJORITY
+            or not moves
+        ):
+            return moves
+        best = max(len(move.captured) for move in moves)
+        return [move for move in moves if len(move.captured) == best]
+
     def _generate_white_captures(self) -> list[Move]:
         """Все взятия белых фигур."""
         moves: list[Move] = []
@@ -131,8 +228,18 @@ class MoveGenerator:
     def _generate_white_man_captures(self, ndx: int) -> list[Move]:
         """Все взятия белых простых фигур."""
         moves: list[Move] = []
-        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
-        return moves
+        self._man_captures_from(
+            ndx,
+            [ndx],
+            [],
+            moves,
+            Player.WHITE,
+            man=SquareState.WHITE_MAN,
+            king=SquareState.WHITE_KING,
+            own=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
+            enemy=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
+        )
+        return self._filter_max_majority(moves)
 
     def _generate_white_king_captures(self, ndx: int) -> list[Move]:
         """Все взятия белых дамок."""
@@ -145,7 +252,7 @@ class MoveGenerator:
             own=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
             king=SquareState.WHITE_KING,
         )
-        return moves
+        return self._filter_max_majority(moves)
 
     def _king_captures_from(
         self,
@@ -155,6 +262,7 @@ class MoveGenerator:
         out: list[Move],
         own: tuple[SquareState, SquareState],
         king: SquareState,
+        promotes: bool = False,
     ) -> None:
         """DFS по дереву взятий дамки из `ndx` — общий для обоих цветов (п.4).
 
@@ -164,7 +272,13 @@ class MoveGenerator:
         все поля приземления за ней; каждое приземление — точка ветвления
         DFS. Полная цепочка взятия фиксируется в `out`, когда ни одного
         продолжения найти не удалось.
+
+        `promotes` передаётся сверху, когда дамка получилась превращением
+        простой посреди цепочки взятия (`Rules.mid_capture_promotion`):
+        тогда ходившая фигура завершает ход дамкой независимо от того,
+        на каком поле она остановилась.
         """
+
         extended = False
         for delta in self._diagonals:
             victim, landings = self._scan_king(ndx, delta, own)
@@ -184,6 +298,7 @@ class MoveGenerator:
                     out,
                     own,
                     king,
+                    promotes,
                 )
                 # Откат шага (жертва и посадка известны локально в кадре).
                 self._states[landing] = SquareState.EMPTY
@@ -196,6 +311,7 @@ class MoveGenerator:
                     # (1..N), а не внутренние индексы (пп. 3–4 movegen.md).
                     path=tuple(self._number_of[s] for s in path),
                     captured=tuple(self._number_of[v] for v in captured),
+                    promotes=promotes,
                 )
             )
 
@@ -226,6 +342,147 @@ class MoveGenerator:
             landings.append(cur)
             cur += delta
         return victim, landings
+
+    def _man_captures_from(
+        self,
+        ndx: int,
+        path: list[int],
+        captured: list[int],
+        out: list[Move],
+        player: Player,
+        man: SquareState,
+        king: SquareState,
+        own: tuple[SquareState, SquareState],
+        enemy: tuple[SquareState, SquareState],
+    ) -> None:
+        """DFS по дереву взятий простой из `ndx` — общий для обоих цветов (п.4).
+
+        Простая бьёт в любом направлении: жертва — сосед по диагонали,
+        приземление — клетка строго за ней (`_scan_man`). Поведение простой,
+        попавшей в ходе взятия на поле превращения, определяется
+        `Rules.mid_capture_promotion`:
+
+        - `PROMOTES_AT_ONCE` (русские): простая немедленно становится дамкой
+          и продолжает бой уже дамкой;
+        - `CONTINUE_AS_MAN` (международные): если с поля превращения можно
+          продолжить бой как простая, она обязана это сделать и остаётся
+          простой до конца хода; если нельзя — простая останавливается на
+          поле превращения, и ход завершается превращением в дамку
+          (дальше она уже не бьёт).
+        """
+        extended = False
+        for delta in self._diagonals:
+            victim, landing = self._scan_man(ndx, delta, enemy)
+            if victim is None or landing is None:
+                continue
+            extended = True
+            saved_victim = self._states[victim]
+            # Применяем шаг: жертва -> TAKEN, простая -> landing.
+            self._states[ndx] = SquareState.EMPTY
+            self._states[victim] = SquareState.TAKEN
+
+            if landing in self._promotion_squares[player]:
+                if (
+                    self._rules.mid_capture_promotion
+                    is MidCapturePromotion.PROMOTES_AT_ONCE
+                ):
+                    # Русские: превращение немедленно, продолжение боя дамкой.
+                    self._states[landing] = king
+                    self._king_captures_from(
+                        landing,
+                        [*path, landing],
+                        [*captured, victim],
+                        out,
+                        own,
+                        king,
+                        promotes=True,
+                    )
+                else:
+                    # Международные: если с поля превращения можно бить как
+                    # простая, она обязана это сделать и остаётся простой.
+                    if any(
+                        self._scan_man(landing, d, enemy)[0] is not None
+                        for d in self._diagonals
+                    ):
+                        self._states[landing] = man
+                        self._man_captures_from(
+                            landing,
+                            [*path, landing],
+                            [*captured, victim],
+                            out,
+                            player,
+                            man,
+                            king,
+                            own,
+                            enemy,
+                        )
+                    else:
+                        # Продолжить бой простой невозможно: простая
+                        # останавливается на поле превращения, и ход
+                        # завершается превращением в дамку.
+                        self._states[landing] = king
+                        out.append(
+                            Move(
+                                # `Move.path`/`Move.captured` хранят номера
+                                # игровых полей (1..N), а не внутренние
+                                # индексы (пп. 3–4 movegen.md).
+                                path=tuple(
+                                    self._number_of[s] for s in [*path, landing]
+                                ),
+                                captured=tuple(
+                                    self._number_of[v] for v in [*captured, victim]
+                                ),
+                                promotes=True,
+                            )
+                        )
+            else:
+                self._states[landing] = man
+                self._man_captures_from(
+                    landing,
+                    [*path, landing],
+                    [*captured, victim],
+                    out,
+                    player,
+                    man,
+                    king,
+                    own,
+                    enemy,
+                )
+
+            # Откат шага (жертва и посадка известны локально в кадре).
+            self._states[landing] = SquareState.EMPTY
+            self._states[victim] = saved_victim
+            self._states[ndx] = man
+        if captured and not extended:
+            out.append(
+                Move(
+                    # `Move.path`/`Move.captured` хранят номера игровых полей
+                    # (1..N), а не внутренние индексы (пп. 3–4 movegen.md).
+                    path=tuple(self._number_of[s] for s in path),
+                    captured=tuple(self._number_of[v] for v in captured),
+                )
+            )
+
+    def _scan_man(
+        self,
+        ndx: int,
+        delta: int,
+        enemy: tuple[SquareState, SquareState],
+    ) -> tuple[int | None, int | None]:
+        """Жертва и поле приземления за ней для простой по лучу `delta` (п.4).
+
+        Жертва — сосед по диагонали с фигурой противника, приземление —
+        клетка строго за ней на `EMPTY` (у обоих вариантов одинаково).
+        `TAKEN` не входит в `enemy`, поэтому битую шашку нельзя бить
+        вторично, а на битую или занятую клетку нельзя приземляться.
+        """
+        victim = ndx + delta
+        if victim not in self._states or self._states[victim] not in enemy:
+            return None, None
+        landing = victim + delta
+        if landing not in self._states or self._states[landing] != SquareState.EMPTY:
+            return None, None
+        return victim, landing
 
     def _generate_white_man_moves(self, ndx: int) -> list[Move]:
         """Все тихие ходы белой простой: два соседних поля на `EMPTY`.
@@ -306,8 +563,18 @@ class MoveGenerator:
     def _generate_black_man_captures(self, ndx: int) -> list[Move]:
         """Все взятия чорных простых фигур."""
         moves: list[Move] = []
-        # Перебор фигур игрока: здесь будет поиск ходов каждой фигуры.
-        return moves
+        self._man_captures_from(
+            ndx,
+            [ndx],
+            [],
+            moves,
+            Player.BLACK,
+            man=SquareState.BLACK_MAN,
+            king=SquareState.BLACK_KING,
+            own=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
+            enemy=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
+        )
+        return self._filter_max_majority(moves)
 
     def _generate_black_king_captures(self, ndx: int) -> list[Move]:
         """Все взятия чорных дамок."""
@@ -320,7 +587,7 @@ class MoveGenerator:
             own=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
             king=SquareState.BLACK_KING,
         )
-        return moves
+        return self._filter_max_majority(moves)
 
     def _generate_black_man_moves(self, ndx: int) -> list[Move]:
         """Все тихие ходы чёрной простой: проверяем два соседних поля на `EMPTY`.

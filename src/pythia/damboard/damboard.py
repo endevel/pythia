@@ -5,7 +5,7 @@ from pythia.core.player import Player
 from pythia.core.square_state import SquareState
 from pythia.damboard.board_size import BoardSize
 from pythia.damboard.square_builders.standard_builder import build_standard_board
-from pythia.pdn.fen import Fen
+from pythia.pdn.fen import Fen, fen_from_states
 
 
 class Damboard:
@@ -88,3 +88,12 @@ class Damboard:
     @property
     def black_pieces(self) -> set[int]:
         return {self.__number_map[ndx] for ndx in self.__black_pieces}
+
+    def to_fen(self, start_color: Player = Player.WHITE) -> str:
+        """Возвращает текущую позицию в формате FEN (PDN).
+
+        Формат: <цвет хода>:W<номера белых>:B<номера чёрных>,
+        дамки помечаются префиксом "K". Номера в каждой секции
+        отсортированы по возрастанию.
+        """
+        return fen_from_states(dict(enumerate(self.__squares)), self.number_at, start_color)

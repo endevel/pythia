@@ -64,7 +64,9 @@ class Rules:
 
 
 RUSSIAN = Rules(MidCapturePromotion.PROMOTES_AT_ONCE, CapturePriority.FREE_CHOICE, frozenset({0}))
-INTERNATIONAL = Rules(MidCapturePromotion.CONTINUE_AS_MAN, CapturePriority.MAX_MAJORITY, frozenset({0}))
+INTERNATIONAL = Rules(
+    MidCapturePromotion.CONTINUE_AS_MAN, CapturePriority.MAX_MAJORITY, frozenset({0})
+)
 ```
 
 Обратите внимание: в **обоих** вариантах пешка бьёт назад и взятие обязательно.

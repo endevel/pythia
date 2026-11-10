@@ -93,27 +93,27 @@ class MoveGenerator:
 
         Финальное состояние ходившей фигуры: при `move.promotes` — дамка
         (превращение в конце тихого хода либо по завершении цепочки
-        взятия), иначе — исходное состояние (ранг сохраняется). Побитые
-        фигуры переводятся в `TAKEN`.
+        взятия), иначе — исходное состояние (ранг сохраняется).
+
+        Побитые фигуры переводятся в `EMPTY`, а не в `TAKEN`: ход
+        завершён, побитые фигуры сняты с доски, и их поля — обычные
+        пустые клетки для следующего хода (на них можно и приземляться,
+        и вставать тихим ходом). `TAKEN` используется только внутри DFS
+        одной цепочки взятия (см. `_scan_man`/`_scan_king`).
         """
+
         origin = self._ndx_of[move.path[0]]
         landing = self._ndx_of[move.path[-1]]
         origin_state = self._states[origin]
-        victims = {
-            self._ndx_of[n]: self._states[self._ndx_of[n]] for n in move.captured
-        }
+        victims = {self._ndx_of[n]: self._states[self._ndx_of[n]] for n in move.captured}
         final = (
-            (
-                SquareState.WHITE_KING
-                if player == Player.WHITE
-                else SquareState.BLACK_KING
-            )
+            (SquareState.WHITE_KING if player == Player.WHITE else SquareState.BLACK_KING)
             if move.promotes
             else origin_state
         )
         self._states[origin] = SquareState.EMPTY
         for victim in victims:
-            self._states[victim] = SquareState.TAKEN
+            self._states[victim] = SquareState.EMPTY
         self._states[landing] = final
         return MoveUndo(
             origin=origin,
@@ -207,51 +207,42 @@ class MoveGenerator:
 
         Для русских шашек (`FREE_CHOICE`) список возвращается без изменений.
         """
-        if (
-            self._rules.capture_priority is not CapturePriority.MAX_MAJORITY
-            or not moves
-        ):
+        if self._rules.capture_priority is not CapturePriority.MAX_MAJORITY or not moves:
             return moves
         best = max(len(move.captured) for move in moves)
         return [move for move in moves if len(move.captured) == best]
 
     def _generate_white_captures(self) -> list[Move]:
-        """Все взятия белых фигур."""
+        """Все взятия белых фигур с применением «правила большинства».
+
+        Фильтр максимальной длины применяется один раз ко всем взятиям
+        всех фигур: если у любой фигуры есть цепочка длиннее, короткие
+        цепочки остальных фигур недопустимы (международные шашки).
+        """
+
         moves: list[Move] = []
         for ndx in self._pieces_of(Player.WHITE):
             if self._states[ndx] == SquareState.WHITE_MAN:
-                moves.extend(self._generate_white_man_captures(ndx))
+                self._man_captures_from(
+                    ndx,
+                    [ndx],
+                    [],
+                    moves,
+                    Player.WHITE,
+                    man=SquareState.WHITE_MAN,
+                    king=SquareState.WHITE_KING,
+                    own=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
+                    enemy=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
+                )
             elif self._states[ndx] == SquareState.WHITE_KING:
-                moves.extend(self._generate_white_king_captures(ndx))
-        return moves
-
-    def _generate_white_man_captures(self, ndx: int) -> list[Move]:
-        """Все взятия белых простых фигур."""
-        moves: list[Move] = []
-        self._man_captures_from(
-            ndx,
-            [ndx],
-            [],
-            moves,
-            Player.WHITE,
-            man=SquareState.WHITE_MAN,
-            king=SquareState.WHITE_KING,
-            own=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
-            enemy=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
-        )
-        return self._filter_max_majority(moves)
-
-    def _generate_white_king_captures(self, ndx: int) -> list[Move]:
-        """Все взятия белых дамок."""
-        moves: list[Move] = []
-        self._king_captures_from(
-            ndx,
-            [ndx],
-            [],
-            moves,
-            own=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
-            king=SquareState.WHITE_KING,
-        )
+                self._king_captures_from(
+                    ndx,
+                    [ndx],
+                    [],
+                    moves,
+                    own=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
+                    king=SquareState.WHITE_KING,
+                )
         return self._filter_max_majority(moves)
 
     def _king_captures_from(
@@ -273,6 +264,10 @@ class MoveGenerator:
         DFS. Полная цепочка взятия фиксируется в `out`, когда ни одного
         продолжения найти не удалось.
 
+        Приземляться можно и на поле фигуры, побитой ранее в этой же
+        цепочке («турецкий удар»): побитая фигура остаётся препятствием
+        для повторного прыжка, но её поле — разрешённая точка приземления.
+
         `promotes` передаётся сверху, когда дамка получилась превращением
         простой посреди цепочки взятия (`Rules.mid_capture_promotion`):
         тогда ходившая фигура завершает ход дамкой независимо от того,
@@ -287,6 +282,7 @@ class MoveGenerator:
             for landing in landings:
                 extended = True
                 saved_victim = self._states[victim]
+                saved_landing = self._states[landing]
                 # Применяем шаг: жертва -> TAKEN, дамка -> landing.
                 self._states[ndx] = SquareState.EMPTY
                 self._states[victim] = SquareState.TAKEN
@@ -300,8 +296,9 @@ class MoveGenerator:
                     king,
                     promotes,
                 )
-                # Откат шага (жертва и посадка известны локально в кадре).
-                self._states[landing] = SquareState.EMPTY
+                # Откат шага: поле приземления возвращается к исходному
+                # состоянию (EMPTY или TAKEN — поле ранее побитой фигуры).
+                self._states[landing] = saved_landing
                 self._states[victim] = saved_victim
                 self._states[ndx] = king
         if captured and not extended:
@@ -382,10 +379,7 @@ class MoveGenerator:
             self._states[victim] = SquareState.TAKEN
 
             if landing in self._promotion_squares[player]:
-                if (
-                    self._rules.mid_capture_promotion
-                    is MidCapturePromotion.PROMOTES_AT_ONCE
-                ):
+                if self._rules.mid_capture_promotion is MidCapturePromotion.PROMOTES_AT_ONCE:
                     # Русские: превращение немедленно, продолжение боя дамкой.
                     self._states[landing] = king
                     self._king_captures_from(
@@ -401,8 +395,7 @@ class MoveGenerator:
                     # Международные: если с поля превращения можно бить как
                     # простая, она обязана это сделать и остаётся простой.
                     if any(
-                        self._scan_man(landing, d, enemy)[0] is not None
-                        for d in self._diagonals
+                        self._scan_man(landing, d, enemy)[0] is not None for d in self._diagonals
                     ):
                         self._states[landing] = man
                         self._man_captures_from(
@@ -426,12 +419,8 @@ class MoveGenerator:
                                 # `Move.path`/`Move.captured` хранят номера
                                 # игровых полей (1..N), а не внутренние
                                 # индексы (пп. 3–4 movegen.md).
-                                path=tuple(
-                                    self._number_of[s] for s in [*path, landing]
-                                ),
-                                captured=tuple(
-                                    self._number_of[v] for v in [*captured, victim]
-                                ),
+                                path=tuple(self._number_of[s] for s in [*path, landing]),
+                                captured=tuple(self._number_of[v] for v in [*captured, victim]),
                                 promotes=True,
                             )
                         )
@@ -551,42 +540,35 @@ class MoveGenerator:
         return moves
 
     def _generate_black_captures(self) -> list[Move]:
-        """Все взятия черных фигур."""
+        """Все взятия чёрных фигур с применением «правила большинства».
+
+        Фильтр максимальной длины применяется один раз ко всем взятиям
+        всех фигур (см. `_generate_white_captures`).
+        """
+
         moves: list[Move] = []
         for ndx in self._pieces_of(Player.BLACK):
             if self._states[ndx] == SquareState.BLACK_MAN:
-                moves.extend(self._generate_black_man_captures(ndx))
+                self._man_captures_from(
+                    ndx,
+                    [ndx],
+                    [],
+                    moves,
+                    Player.BLACK,
+                    man=SquareState.BLACK_MAN,
+                    king=SquareState.BLACK_KING,
+                    own=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
+                    enemy=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
+                )
             elif self._states[ndx] == SquareState.BLACK_KING:
-                moves.extend(self._generate_black_king_captures(ndx))
-        return moves
-
-    def _generate_black_man_captures(self, ndx: int) -> list[Move]:
-        """Все взятия чорных простых фигур."""
-        moves: list[Move] = []
-        self._man_captures_from(
-            ndx,
-            [ndx],
-            [],
-            moves,
-            Player.BLACK,
-            man=SquareState.BLACK_MAN,
-            king=SquareState.BLACK_KING,
-            own=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
-            enemy=(SquareState.WHITE_MAN, SquareState.WHITE_KING),
-        )
-        return self._filter_max_majority(moves)
-
-    def _generate_black_king_captures(self, ndx: int) -> list[Move]:
-        """Все взятия чорных дамок."""
-        moves: list[Move] = []
-        self._king_captures_from(
-            ndx,
-            [ndx],
-            [],
-            moves,
-            own=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
-            king=SquareState.BLACK_KING,
-        )
+                self._king_captures_from(
+                    ndx,
+                    [ndx],
+                    [],
+                    moves,
+                    own=(SquareState.BLACK_MAN, SquareState.BLACK_KING),
+                    king=SquareState.BLACK_KING,
+                )
         return self._filter_max_majority(moves)
 
     def _generate_black_man_moves(self, ndx: int) -> list[Move]:

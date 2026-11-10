@@ -65,9 +65,7 @@ class Search:
         capture_extension: bool = True,
     ):
         self._generator = MoveGenerator(board, rules)
-        self._evaluator: Evaluator = (
-            evaluator if evaluator is not None else MaterialEvaluator()
-        )
+        self._evaluator: Evaluator = evaluator if evaluator is not None else MaterialEvaluator()
         self._capture_extension = capture_extension
 
     def best_move(self, player: Player, depth: int = 6) -> SearchResult:
@@ -110,9 +108,7 @@ class Search:
         if not moves:
             # Ходов нет — все фигуры побиты или заперты: проигрыш.
             return -(WIN_SCORE - ply)
-        if depth <= 0 and (
-            not self._capture_extension or not moves[0].is_capture
-        ):
+        if depth <= 0 and (not self._capture_extension or not moves[0].is_capture):
             return self._evaluator.evaluate(self._generator.states, player)
         best = -INF_SCORE
         for move in moves:

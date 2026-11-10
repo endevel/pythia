@@ -24,6 +24,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: медленные тесты (perft глубины 6-7, несколько секунд)",
+]
 
 [tool.ruff]
 line-length = 100

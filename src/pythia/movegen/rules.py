@@ -42,6 +42,7 @@ class Rules:
     mid_capture_promotion: MidCapturePromotion
     capture_priority: CapturePriority
     promotion_rows: frozenset[int]
+    INTERNATIONAL = None
 
 
 RUSSIAN = Rules(

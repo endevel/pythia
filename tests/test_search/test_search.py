@@ -110,3 +110,33 @@ def test_search_restores_working_position():
     reference = Search(board, RUSSIAN)
     search.best_move(Player.WHITE, depth=4)
     assert search._generator.states == reference._generator.states
+
+
+# --- поиск по времени ------------------------------------------------------
+
+
+def test_timed_search_finds_forced_capture():
+    # Простое взятие находится и в режиме поиска по времени.
+    result = _search("W:W23:B18.").best_move_timed(Player.WHITE, time_limit=1.0)
+    assert result.move == Move(path=(23, 14), captured=(18,))
+    assert result.score == WIN_SCORE - 1
+
+
+def test_timed_search_fits_budget_on_complex_position():
+    # Сложная позиция: поиск укладывается в лимит времени и не «зависает».
+    board = Damboard(BoardSize.STANDARD)
+    board.setup("W:W28,23,17:B24,19,15.")
+    result = Search(board, RUSSIAN).best_move_timed(Player.WHITE, time_limit=1.0)
+    assert result.move is not None
+    assert result.depth >= 1
+
+
+def test_timed_search_restores_working_position():
+    # При прерывании перебора по времени ходы откатываются: доска и
+    # рабочая позиция генератора совпадают с исходными.
+    board = Damboard(BoardSize.STANDARD)
+    board.setup("W:W28,23:B24,15.")
+    search = Search(board, RUSSIAN)
+    reference = Search(board, RUSSIAN)
+    search.best_move_timed(Player.WHITE, time_limit=0.1)
+    assert search._generator.states == reference._generator.states

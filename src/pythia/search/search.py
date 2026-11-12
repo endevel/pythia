@@ -13,9 +13,13 @@
 - ходы сортируются для усиления отсечений: сначала более длинные взятия,
   затем превращения;
 - ходов нет — игрок проиграл (все фигуры побиты или заперты), счёт
-  корректируется на `ply`, чтобы поиск предпочитал быструю победу.
+  корректируется на `ply`, чтобы поиск предпочитал быструю победу;
+- `best_move_timed` ищет с нарастающей глубиной в пределах бюджета
+  времени (по умолчанию 1 с): новый перебор не запускается после 70%
+  бюджета, а начатый прерывается исключением при его исчерпании.
 """
 
+import time
 from dataclasses import dataclass
 
 from pythia.core.player import Player
@@ -29,6 +33,16 @@ from pythia.search.evaluation import Evaluator, MaterialEvaluator
 # «мат в 1» (~WIN_SCORE - 1) всегда предпочтительнее «мата в 5».
 WIN_SCORE = 1_000_000
 INF_SCORE = 10 * WIN_SCORE
+
+# Доля бюджета времени, после превышения которой не запускается следующий
+# (более глубокий) перебор: каждый следующий уровень дерева занимает больше
+# времени, чем предыдущий, поэтому перебор, начатый при исчерпании 70%
+# бюджета, почти наверняка не уложится в оставшиеся 30%.
+_SOFT_TIME_RATIO = 0.7
+
+
+class _SearchTimeout(Exception):
+    """Внутреннее исключение: бюджет времени поиска исчерпан."""
 
 
 @dataclass(frozen=True)
@@ -67,6 +81,7 @@ class Search:
         self._generator = MoveGenerator(board, rules)
         self._evaluator: Evaluator = evaluator if evaluator is not None else MaterialEvaluator()
         self._capture_extension = capture_extension
+        self._deadline: float | None = None
 
     def best_move(self, player: Player, depth: int = 6) -> SearchResult:
         """Лучший ход для `player` перебором на `depth` полуходов.
@@ -82,18 +97,46 @@ class Search:
         alpha, beta = -INF_SCORE, INF_SCORE
         for move in moves:
             undo = self._generator.make_move(move, player)
-            score = -self._negamax(
-                depth - 1,
-                self._opponent(player),
-                alpha=-beta,
-                beta=-alpha,
-                ply=1,
-            )
-            self._generator.unmake_move(undo)
+            try:
+                score = -self._negamax(
+                    depth - 1,
+                    self._opponent(player),
+                    alpha=-beta,
+                    beta=-alpha,
+                    ply=1,
+                )
+            finally:
+                # finally (а не только в штатном сценарии) — чтобы при
+                # прерывании по времени ходы откатывались на каждом кадре.
+                self._generator.unmake_move(undo)
             if score > best_score:
                 best_score, best_move = score, move
             alpha = max(alpha, score)
         return SearchResult(move=best_move, score=best_score, depth=depth)
+
+    def best_move_timed(self, player: Player, time_limit: float = 1.0) -> SearchResult:
+        """Лучший ход для `player` за отведённое `time_limit` секунд.
+
+        Последовательно перебирает нарастающие глубины (2, 3, ...), пока
+        позволяет бюджет времени. Новый перебор не запускается, если
+        потрачено более 70% бюджета (см. `_SOFT_TIME_RATIO`); начатый
+        перебор прерывается при полном исчерпании бюджета. Возвращается
+        результат последней завершённой глубины (минимум — глубина 1,
+        выполняется мгновенно как страховка).
+        """
+        start = time.perf_counter()
+        self._deadline = start + time_limit
+        result = self.best_move(player, depth=1)
+        try:
+            depth = 2
+            while time.perf_counter() - start <= _SOFT_TIME_RATIO * time_limit:
+                result = self.best_move(player, depth=depth)
+                depth += 1
+        except _SearchTimeout:
+            pass  # бюджет исчерпан — используем последнюю завершённую глубину
+        finally:
+            self._deadline = None
+        return result
 
     def _negamax(
         self,
@@ -104,6 +147,9 @@ class Search:
         ply: int,
     ) -> int:
         """Негмакс с альфа-бета: счёт для стороны `player` в узле."""
+        if self._deadline is not None and time.perf_counter() >= self._deadline:
+            # Проверка до generate/make_move — откатывать здесь нечего.
+            raise _SearchTimeout
         moves = self._generate_sorted(player)
         if not moves:
             # Ходов нет — все фигуры побиты или заперты: проигрыш.
@@ -113,14 +159,16 @@ class Search:
         best = -INF_SCORE
         for move in moves:
             undo = self._generator.make_move(move, player)
-            score = -self._negamax(
-                depth - 1,
-                self._opponent(player),
-                alpha=-beta,
-                beta=-alpha,
-                ply=ply + 1,
-            )
-            self._generator.unmake_move(undo)
+            try:
+                score = -self._negamax(
+                    depth - 1,
+                    self._opponent(player),
+                    alpha=-beta,
+                    beta=-alpha,
+                    ply=ply + 1,
+                )
+            finally:
+                self._generator.unmake_move(undo)
             if score > best:
                 best = score
             if best > alpha:

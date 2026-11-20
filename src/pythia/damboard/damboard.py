@@ -63,6 +63,26 @@ class DamBoard:
         """Состояние клетки по внутреннему индексу плоского массива."""
         return self._squares[ndx]
 
+    def set_state(self, ndx: int, state: SquareState):
+        """Устанавливает состояние клетки по внутреннему индексу.
+
+        Метод обновляет не только плоский массив клеток, но и учёт фигур:
+        клетка удаляется из обоих множеств и, если новое состояние
+        соответствует фигуре, добавляется в множество её владельца.
+
+        Args:
+            ndx: Внутренний индекс клетки плоского массива.
+            state: Новое состояние клетки.
+        """
+
+        self._squares[ndx] = state
+        self._white_pieces.discard(ndx)
+        self._black_pieces.discard(ndx)
+        if state in (SquareState.WHITE_MAN, SquareState.WHITE_KING):
+            self._white_pieces.add(ndx)
+        elif state in (SquareState.BLACK_MAN, SquareState.BLACK_KING):
+            self._black_pieces.add(ndx)
+
     def number_at(self, ndx: int) -> int:
         """Обратное отображение: внутренний индекс -> номер игрового поля (1..N)."""
         return self._number_map[ndx]
@@ -137,6 +157,11 @@ class DamBoard:
     def player_to_move(self):
         """Игрок, чья очередь хода."""
         return self._player_to_move
+
+    @player_to_move.setter
+    def player_to_move(self, player: Player):
+        """Устанавливает игрока, чья очередь хода."""
+        self._player_to_move = player
 
     @property
     def height(self) -> int:

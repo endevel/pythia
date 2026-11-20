@@ -81,6 +81,7 @@ class InternationalManCapture(BaseMoveGenerator):
             man_state=man_state,
             promotion_row=promotion_row,
             taken=[],
+            path=[square_ndx],
             moves=moves,
         )
         return moves
@@ -93,6 +94,7 @@ class InternationalManCapture(BaseMoveGenerator):
         man_state: SquareState,
         promotion_row: int,
         taken: list[tuple[int, SquareState]],
+        path: list[int],
         moves: list[Move],
     ) -> None:
         """Рекурсивно перебирает все продолжения цепочки взятий."""
@@ -112,6 +114,7 @@ class InternationalManCapture(BaseMoveGenerator):
                         before_state=man_state,
                         after_state=after_state,
                         taken=list(taken),
+                        path=tuple(path),
                     )
                 )
             return
@@ -122,6 +125,7 @@ class InternationalManCapture(BaseMoveGenerator):
             # быть взята повторно и не пропускает через себя шашку.
             states[captured_ndx] = SquareState.TAKEN
             taken.append((captured_ndx, captured_state))
+            path.append(landing_ndx)
             # Простая шашка всегда продолжает бой как простая, даже если
             # текущая клетка находится на дамочном ряду.
             self._search(
@@ -131,8 +135,10 @@ class InternationalManCapture(BaseMoveGenerator):
                 man_state,
                 promotion_row,
                 taken,
+                path,
                 moves,
             )
+            path.pop()
             taken.pop()
             states[captured_ndx] = captured_state
 

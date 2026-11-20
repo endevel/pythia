@@ -88,6 +88,7 @@ class RussianManCapture(BaseMoveGenerator):
             man_state=man_state,
             promotion_row=promotion_row,
             taken=[],
+            path=[square_ndx],
             moves=moves,
         )
         return moves
@@ -100,6 +101,7 @@ class RussianManCapture(BaseMoveGenerator):
         man_state: SquareState,
         promotion_row: int,
         taken: list[tuple[int, SquareState]],
+        path: list[int],
         moves: list[Move],
     ) -> None:
         """Рекурсивно перебирает все продолжения цепочки взятий."""
@@ -116,6 +118,7 @@ class RussianManCapture(BaseMoveGenerator):
                         before_state=man_state,
                         after_state=man_state,
                         taken=list(taken),
+                        path=tuple(path),
                     )
                 )
             return
@@ -126,6 +129,7 @@ class RussianManCapture(BaseMoveGenerator):
             # быть взята повторно и не пропускает через себя шашку.
             states[captured_ndx] = SquareState.TAKEN
             taken.append((captured_ndx, captured_state))
+            path.append(landing_ndx)
 
             if landing_ndx // self._stride == promotion_row:
                 # Простая достигла дамочного ряда прямо в процессе боя.
@@ -138,6 +142,7 @@ class RussianManCapture(BaseMoveGenerator):
                     current_ndx=landing_ndx,
                     king_state=king_state,
                     taken=taken,
+                    path=path,
                     moves=moves,
                     before_state=man_state,
                     after_state=king_state,
@@ -150,9 +155,11 @@ class RussianManCapture(BaseMoveGenerator):
                     man_state,
                     promotion_row,
                     taken,
+                    path,
                     moves,
                 )
 
+            path.pop()
             taken.pop()
             states[captured_ndx] = captured_state
 

@@ -2,7 +2,7 @@ from pythia.core.move import Move
 from pythia.core.player import Player
 from pythia.core.square_state import SquareState
 from pythia.damboard.damboard import DamBoard
-from pythia.movegen.base import BaseMoveGenerator
+from pythia.movegen.base import BaseMoveGenerator, GenerateMoveList
 from pythia.movegen.standard.black_man_move import BlackManMove
 from pythia.movegen.standard.king_capture import KingCapture
 from pythia.movegen.standard.king_move import KingMove
@@ -10,7 +10,7 @@ from pythia.movegen.standard.russian_man_capture import RussianManCapture
 from pythia.movegen.standard.white_man_move import WhiteManMove
 
 
-class RussianMoveGen:
+class RussianMoveGen(GenerateMoveList):
     """Генератор ходов по правилам русских шашек.
 
     Для каждого типа фигуры игрока используется отдельный генератор:
@@ -117,7 +117,3 @@ class RussianMoveGen:
         if captures:
             return captures
         return self._generate_moves()
-
-    # Имя с опечаткой сохранено для совместимости с InternationalMoveGen,
-    # у которого исторически используется именно такое написание.
-    genarate_move_list = generate_move_list

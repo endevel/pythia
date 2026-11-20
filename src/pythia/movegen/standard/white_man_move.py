@@ -51,6 +51,7 @@ class WhiteManMove(BaseMoveGenerator):
                         to_square=next_ndx,
                         before_state=piece_state,
                         after_state=after_state,
+                        path=(square_ndx, next_ndx),
                     )
                 )
         return moves

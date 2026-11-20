@@ -2,7 +2,7 @@ from pythia.core.move import Move
 from pythia.core.player import Player
 from pythia.core.square_state import SquareState
 from pythia.damboard.damboard import DamBoard
-from pythia.movegen.base import BaseMoveGenerator
+from pythia.movegen.base import BaseMoveGenerator, GenerateMoveList
 from pythia.movegen.standard.black_man_move import BlackManMove
 from pythia.movegen.standard.international_man_capture import InternationalManCapture
 from pythia.movegen.standard.king_capture import KingCapture
@@ -10,7 +10,7 @@ from pythia.movegen.standard.king_move import KingMove
 from pythia.movegen.standard.white_man_move import WhiteManMove
 
 
-class InternationalMoveGen:
+class InternationalMoveGen(GenerateMoveList):
     """Генератор ходов по правилам международных шашек.
 
     Для каждого типа фигуры игрока используется отдельный генератор:
@@ -108,9 +108,16 @@ class InternationalMoveGen:
                 )
         return moves
 
-    def genarate_move_list(self) -> list[Move]:
-        moves: list[Move] = []
-        moves.extend(self._generate_captures())
-        if len(moves) == 0:
-            moves.extend(self._generate_moves())
-        return moves
+    def generate_move_list(self) -> list[Move]:
+        """Возвращает список допустимых ходов игрока, чей ход.
+
+        Взятие в международных шашках обязательно, поэтому при наличии
+        ударных ходов возвращаются только они. Среди ударных ходов
+        генератор :meth:`_generate_captures` оставляет лишь цепочки,
+        снимающие максимальное число фигур противника.
+        """
+
+        captures = self._generate_captures()
+        if captures:
+            return captures
+        return self._generate_moves()

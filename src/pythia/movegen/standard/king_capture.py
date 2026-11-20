@@ -65,6 +65,7 @@ class KingCapture(BaseMoveGenerator):
             current_ndx=square_ndx,
             king_state=king_state,
             taken=[],
+            path=[square_ndx],
             moves=moves,
         )
         return moves
@@ -76,6 +77,7 @@ class KingCapture(BaseMoveGenerator):
         current_ndx: int,
         king_state: SquareState,
         taken: list[tuple[int, SquareState]],
+        path: list[int],
         moves: list[Move],
         before_state: SquareState,
         after_state: SquareState,
@@ -106,6 +108,7 @@ class KingCapture(BaseMoveGenerator):
             current_ndx=current_ndx,
             king_state=king_state,
             taken=taken,
+            path=path,
             moves=moves,
             before_state=before_state,
             after_state=after_state,
@@ -118,6 +121,7 @@ class KingCapture(BaseMoveGenerator):
         current_ndx: int,
         king_state: SquareState,
         taken: list[tuple[int, SquareState]],
+        path: list[int],
         moves: list[Move],
         before_state: SquareState | None = None,
         after_state: SquareState | None = None,
@@ -146,6 +150,7 @@ class KingCapture(BaseMoveGenerator):
                         before_state=before_state,
                         after_state=after_state,
                         taken=list(taken),
+                        path=tuple(path),
                     )
                 )
             return
@@ -156,16 +161,19 @@ class KingCapture(BaseMoveGenerator):
             # быть взята повторно и не пропускает через себя дамку.
             states[captured_ndx] = SquareState.TAKEN
             taken.append((captured_ndx, captured_state))
+            path.append(landing_ndx)
             self._search(
                 states,
                 from_ndx,
                 landing_ndx,
                 king_state,
                 taken,
+                path,
                 moves,
                 before_state,
                 after_state,
             )
+            path.pop()
             taken.pop()
             states[captured_ndx] = captured_state
 

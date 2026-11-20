@@ -49,6 +49,7 @@ class KingMove(BaseMoveGenerator):
                         to_square=next_ndx,
                         before_state=piece_state,
                         after_state=piece_state,
+                        path=(square_ndx, next_ndx),
                     )
                 )
                 next_ndx += direction

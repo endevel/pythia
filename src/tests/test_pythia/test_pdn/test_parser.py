@@ -173,3 +173,83 @@ def test_parse_file_reads_all_games(tmp_path):
     games = russian_parser().parse_file(str(path))
 
     assert [game.headers["White"] for game in games] == ["Alice", "Bob"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        '[Event "Empty"]\n[White "Alice"]',
+        '[White "Alice"]\n\n1. 22-18 9-13',
+        '[White "Alice"]\n\n1. 22-18 9-13\n\n[White "Bob"]\n\n1. 23-18 10-14',
+        "1. 22-18 9-13",
+        '1. 22-18\n\n[White "Bob"]',
+    ],
+)
+def test_count_games_matches_parse(text):
+    parser = russian_parser()
+
+    assert parser.count_games(text) == len(parser.parse(text))
+
+
+def test_count_games_file_counts_without_replay(tmp_path):
+    path = tmp_path / "games.pdn"
+    path.write_text(
+        """
+[White "Alice"]
+
+1. 22-18 9-13
+
+[White "Bob"]
+
+1. 23-18 10-14
+""",
+        encoding="utf-8",
+    )
+
+    assert russian_parser().count_games_file(str(path)) == 2
+
+
+def test_parse_file_reports_progress(tmp_path):
+    path = tmp_path / "games.pdn"
+    path.write_text(
+        """
+[White "Alice"]
+
+1. 22-18 9-13
+
+[White "Bob"]
+
+1. 23-18 10-14
+""",
+        encoding="utf-8",
+    )
+
+    progress: list[tuple[int, int]] = []
+    games = russian_parser().parse_file(
+        str(path),
+        progress=lambda done, total: progress.append((done, total)),
+    )
+
+    assert len(games) == 2
+    assert progress == [(1, 2), (2, 2)]
+
+
+def test_iter_parse_file_yields_games(tmp_path):
+    path = tmp_path / "games.pdn"
+    path.write_text(
+        """
+[White "Alice"]
+
+1. 22-18 9-13
+
+[White "Bob"]
+
+1. 23-18 10-14
+""",
+        encoding="utf-8",
+    )
+
+    games = list(russian_parser().iter_parse_file(str(path)))
+
+    assert [game.headers["White"] for game in games] == ["Alice", "Bob"]

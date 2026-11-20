@@ -22,6 +22,7 @@ PDN-файл состоит из партий. Каждая партия — б�
 """
 
 import re
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 
 from pythia.core.board_size import BoardSize
@@ -57,6 +58,9 @@ MOVE_NUMBER_RE = re.compile(r"^\d+\.+")
 #: Токен полухода: цепочка номеров полей через `-` (тихий ход),
 #: `x` или `:` (взятие), с необязательными знаками `!`/`?` в конце.
 MOVE_TOKEN_RE = re.compile(r"\d+(?:[xX:\-]\d+)+[!?]*")
+
+#: Колбэк прогресса разбора: ``(обработано партий, всего партий)``.
+ProgressCallback = Callable[[int, int], None]
 
 
 @dataclass
@@ -94,29 +98,110 @@ class PdnParser:
             board_size = BoardSize.STANDARD if rules is Rules.RUSSIAN else BoardSize.BIG
         self._board_size = board_size
 
-    def parse_file(self, path: str) -> list[PdnGame]:
-        """Читает все партии из PDN-файла."""
-        with open(path, encoding="utf-8") as file:
-            return self.parse(file.read())
+    def count_games_file(self, path: str) -> int:
+        """Быстро считает число партий в PDN-файле, не разбирая ходы.
 
-    def parse(self, text: str) -> list[PdnGame]:
+        Выполняется за один проход по строкам без создания досок и
+        генерации ходов, поэтому подходит для оценки объёма работы перед
+        ``parse_file`` (например, для прогресс-бара).
+        """
+        with open(path, encoding="utf-8") as file:
+            return self._count_games_in_lines(file)
+
+    def count_games(self, text: str) -> int:
+        """Быстро считает число партий в PDN-тексте, не разбирая ходы."""
+        return self._count_games_in_lines(text.splitlines())
+
+    @staticmethod
+    def _count_games_in_lines(lines: Iterable[str]) -> int:
+        """Считает партии по тому же правилу, что и ``_iter_parse_lines``.
+
+        Новая партия начинается с заголовка после movetext; завершающая
+        партия учитывается, если после последнего разделителя остались
+        заголовки или movetext.
+        """
+        count = 0
+        has_content = False
+        saw_movetext = False
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                continue
+            if HEADER_RE.match(line):
+                if saw_movetext:
+                    count += 1
+                    saw_movetext = False
+                has_content = True
+            else:
+                has_content = True
+                saw_movetext = True
+
+        return count + 1 if has_content else 0
+
+    def parse_file(
+        self,
+        path: str,
+        progress: ProgressCallback | None = None,
+    ) -> list[PdnGame]:
+        """Читает все партии из PDN-файла.
+
+        Если передан ``progress``, файл сначала быстро сканируется для
+        подсчёта партий, а затем каждая разобранная партия передаётся в
+        колбэк как ``progress(обработано, всего)``. Это позволяет показывать
+        прогресс-бар или процент выполнения на больших файлах.
+        """
+        if progress is None:
+            return list(self.iter_parse_file(path))
+
+        total = self.count_games_file(path)
+        games: list[PdnGame] = []
+        for game in self.iter_parse_file(path):
+            games.append(game)
+            progress(len(games), total)
+        return games
+
+    def iter_parse_file(self, path: str) -> Iterator[PdnGame]:
+        """Лениво читает партии из файла, не загружая его целиком в память."""
+        with open(path, encoding="utf-8") as file:
+            yield from self._iter_parse_lines(file)
+
+    def parse(
+        self,
+        text: str,
+        progress: ProgressCallback | None = None,
+    ) -> list[PdnGame]:
         """Читает все партии из PDN-текста.
 
         Новая партия начинается, когда после movetext встречается строка
         заголовка; партия без movetext (только заголовок) получает в
         `positions` единственную начальную позицию.
+
+        ``progress`` работает так же, как в ``parse_file``.
         """
+
+        if progress is None:
+            return list(self._iter_parse_lines(text.splitlines()))
+
+        total = self.count_games(text)
         games: list[PdnGame] = []
+        for game in self._iter_parse_lines(text.splitlines()):
+            games.append(game)
+            progress(len(games), total)
+        return games
+
+    def _iter_parse_lines(self, lines: Iterable[str]) -> Iterator[PdnGame]:
+        """Разбирает партии построчно, отдавая их по мере готовности."""
         headers: dict[str, str] = {}
         movetext: list[str] = []
         saw_movetext = False
 
-        for raw_line in text.splitlines():
+        for raw_line in lines:
             line = raw_line.strip()
             header = HEADER_RE.match(line)
             if header:
                 if saw_movetext:
-                    games.append(self._build_game(headers, movetext))
+                    yield self._build_game(headers, movetext)
                     headers, movetext, saw_movetext = {}, [], False
                 headers[header.group(1)] = header.group(2)
             elif line:
@@ -124,8 +209,7 @@ class PdnParser:
                 movetext.append(line)
 
         if headers or movetext:
-            games.append(self._build_game(headers, movetext))
-        return games
+            yield self._build_game(headers, movetext)
 
     def _build_game(self, headers: dict[str, str], movetext: list[str]) -> PdnGame:
         positions = self._replay(headers, movetext)

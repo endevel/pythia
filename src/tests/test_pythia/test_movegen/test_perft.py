@@ -43,18 +43,12 @@ def international_board():
     return board_from_fen(INTERNATIONAL_START_FEN, BoardSize.BIG)
 
 
-@pytest.mark.parametrize(
-    ("depth", "expected"), sorted(RUSSIAN_REFERENCE.items())
-)
+@pytest.mark.parametrize(("depth", "expected"), sorted(RUSSIAN_REFERENCE.items()))
 def test_russian_perft(russian_board, depth, expected):
-    assert (
-        perft(russian_board, Player.WHITE, depth, RussianMoveGen) == expected
-    )
+    assert perft(russian_board, Player.WHITE, depth, RussianMoveGen) == expected
 
 
-@pytest.mark.parametrize(
-    ("depth", "expected"), sorted(INTERNATIONAL_REFERENCE.items())
-)
+@pytest.mark.parametrize(("depth", "expected"), sorted(INTERNATIONAL_REFERENCE.items()))
 def test_international_perft(international_board, depth, expected):
     assert (
         perft(international_board, Player.WHITE, depth, InternationalMoveGen)
@@ -106,9 +100,7 @@ def test_russian_perft_divide_sums_to_perft(russian_board, depth):
 
 
 @pytest.mark.parametrize("depth", [1, 2])
-def test_international_perft_divide_sums_to_perft(
-    international_board, depth
-):
+def test_international_perft_divide_sums_to_perft(international_board, depth):
     divide = perft_divide(
         international_board, Player.WHITE, depth, InternationalMoveGen
     )

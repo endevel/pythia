@@ -14,9 +14,7 @@ def square_index(board: DamBoard, number: int) -> int:
     raise AssertionError(f"На доске нет поля {number}")
 
 
-def make_board(
-    position: str, board_size: BoardSize = BoardSize.STANDARD
-) -> DamBoard:
+def make_board(position: str, board_size: BoardSize = BoardSize.STANDARD) -> DamBoard:
     board = DamBoard(board_size=board_size)
     board.setup(position)
     return board

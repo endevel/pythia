@@ -54,9 +54,7 @@ def _numbers(numbers: range) -> str:
 # Начальные расстановки в нотации проекта: белые занимают нижние ряды,
 # чёрные — верхние. Доска 8×8 содержит 32 игровых поля, 10×10 — 50.
 RUSSIAN_START_FEN = f"W:W{_numbers(range(21, 33))}:B{_numbers(range(1, 13))}"
-INTERNATIONAL_START_FEN = (
-    f"W:W{_numbers(range(31, 51))}:B{_numbers(range(1, 21))}"
-)
+INTERNATIONAL_START_FEN = f"W:W{_numbers(range(31, 51))}:B{_numbers(range(1, 21))}"
 
 
 def opponent_of(player: Player) -> Player:
@@ -73,9 +71,7 @@ def _factory(movegen: MoveGenFactory | GenerateMoveList) -> MoveGenFactory:
     return type(movegen)
 
 
-def board_from_fen(
-    fen: str, board_size: BoardSize = BoardSize.STANDARD
-) -> DamBoard:
+def board_from_fen(fen: str, board_size: BoardSize = BoardSize.STANDARD) -> DamBoard:
     """Создаёт доску с позицией из FEN-строки (PDN).
 
     Аргументы:

@@ -57,7 +57,7 @@ moves = generator.generate_move_list()
 
 move = moves[0]
 do_move(board, move)
-print(board.to_fen())   # позиция после хода
+print(board.to_fen())  # позиция после хода
 undo_move(board, move)  # возврат к исходной позиции
 ```
 

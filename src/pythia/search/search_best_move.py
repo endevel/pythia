@@ -248,9 +248,7 @@ class SearchBestMove:
         moves = self._generate_moves(board, board.player_to_move)
         return moves[0] if moves else None
 
-    def _generate_moves(
-        self, board: DamBoard, player: Player
-    ) -> list[Move]:
+    def _generate_moves(self, board: DamBoard, player: Player) -> list[Move]:
         """Создаёт генератор для позиции и возвращает список ходов."""
 
         movegen = self._movegen

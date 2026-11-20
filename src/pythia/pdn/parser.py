@@ -91,11 +91,7 @@ class PdnParser:
         """
         self._rules = rules
         if board_size is None:
-            board_size = (
-                BoardSize.STANDARD
-                if rules is Rules.RUSSIAN
-                else BoardSize.BIG
-            )
+            board_size = BoardSize.STANDARD if rules is Rules.RUSSIAN else BoardSize.BIG
         self._board_size = board_size
 
     def parse_file(self, path: str) -> list[PdnGame]:
@@ -224,9 +220,7 @@ class PdnParser:
             notations.append((path, is_capture))
         return notations
 
-    def _create_generator(
-        self, board: DamBoard, player: Player
-    ) -> GenerateMoveList:
+    def _create_generator(self, board: DamBoard, player: Player) -> GenerateMoveList:
         """Создаёт генератор ходов для игрока по выбранным правилам."""
         if self._rules is Rules.INTERNATIONAL:
             return InternationalMoveGen(board, player)

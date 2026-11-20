@@ -7,7 +7,10 @@ authors = [
     { name = "Alex Bykov", email = "endevel@mail.ru" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "rich>=15.0.0",
+    "typer>=0.29.2",
+]
 
 [project.scripts]
 pythia = "pythia:main"

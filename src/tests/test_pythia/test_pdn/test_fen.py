@@ -40,9 +40,7 @@ def test_fen_from_states_uses_number_of_for_square_numbers():
     numbers = {10: 32, 20: 1}
     states = {10: SquareState.WHITE_MAN, 20: SquareState.BLACK_MAN}
 
-    assert (
-        fen_from_states(states, numbers.__getitem__, Player.WHITE) == "W:W32:B1"
-    )
+    assert fen_from_states(states, numbers.__getitem__, Player.WHITE) == "W:W32:B1"
 
 
 def test_fen_from_states_sorts_by_square_number():
@@ -55,8 +53,7 @@ def test_fen_from_states_sorts_by_square_number():
     }
 
     assert (
-        fen_from_states(states, numbers.__getitem__, Player.BLACK)
-        == "B:WK1,32:BK2,31"
+        fen_from_states(states, numbers.__getitem__, Player.BLACK) == "B:WK1,32:BK2,31"
     )
 
 

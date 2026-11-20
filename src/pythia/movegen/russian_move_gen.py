@@ -95,9 +95,7 @@ class RussianMoveGen(GenerateMoveList):
         for square_ndx in self._player_squares():
             state = self._board[square_ndx]
             if state is man_state:
-                moves.extend(
-                    self._man_move_gen.generate_moves(self._board, square_ndx)
-                )
+                moves.extend(self._man_move_gen.generate_moves(self._board, square_ndx))
             elif state is king_state:
                 moves.extend(
                     self._king_move_gen.generate_moves(self._board, square_ndx)

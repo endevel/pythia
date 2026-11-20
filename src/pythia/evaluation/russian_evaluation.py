@@ -51,4 +51,10 @@ class RussianEvaluation(Evaluation):
                 score -= self._man_weight
             elif state is SquareState.BLACK_KING:
                 score -= self._king_weight
+
+        white_center_score = board.white_pieces.intersection(self._white_center)
+        black_center_score = board.black_pieces.intersection(self._black_center)
+        score += len(white_center_score) * self._center_weight
+        score -= len(black_center_score) * self._center_weight
+
         return score

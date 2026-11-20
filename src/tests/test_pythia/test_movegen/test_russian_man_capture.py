@@ -43,8 +43,7 @@ def capture_move(
         before_state=before_state,
         after_state=after_state,
         taken=[
-            (square_index(board, number), taken_state)
-            for number, taken_state in taken
+            (square_index(board, number), taken_state) for number, taken_state in taken
         ],
     )
 
@@ -52,9 +51,7 @@ def capture_move(
 def test_man_without_opponent_has_no_captures():
     board = make_board("W:W22:B")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 22)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 22))
 
     assert moves == []
 
@@ -62,9 +59,7 @@ def test_man_without_opponent_has_no_captures():
 def test_white_man_captures_forward():
     board = make_board("W:W22:B18")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 22)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 22))
 
     assert moves == [
         capture_move(
@@ -81,9 +76,7 @@ def test_white_man_captures_forward():
 def test_white_man_captures_backward():
     board = make_board("W:W22:B26")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 22)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 22))
 
     # В русских шашках простая бьёт и назад. Превращения нет, потому что
     # цепочка заканчивается вне дамочного ряда.
@@ -102,9 +95,7 @@ def test_white_man_captures_backward():
 def test_white_man_cannot_capture_own_piece():
     board = make_board("W:W22,18:B")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 22)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 22))
 
     assert moves == []
 
@@ -112,9 +103,7 @@ def test_white_man_cannot_capture_own_piece():
 def test_white_man_can_capture_opponent_king():
     board = make_board("W:W22:BK18")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 22)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 22))
 
     assert moves == [
         capture_move(
@@ -131,9 +120,7 @@ def test_white_man_can_capture_opponent_king():
 def test_white_man_promotes_when_chain_ends_on_last_row():
     board = make_board("W:W10:B6")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 10)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 10))
 
     # Шашка достигает дамочного ряда и не может бить дальше — превращается.
     assert moves == [
@@ -151,9 +138,7 @@ def test_white_man_promotes_when_chain_ends_on_last_row():
 def test_white_man_continues_capture_as_king_after_promotion():
     board = make_board("W:W9:B6,11")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 9)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 9))
 
     # Шашка бьёт 6 и попадает на поле 2 (дамочный ряд). По правилам русских
     # шашек она сразу становится дамкой и продолжает бой уже на расстояние:
@@ -172,9 +157,7 @@ def test_white_man_continues_capture_as_king_after_promotion():
 def test_white_man_stays_man_when_chain_ends_off_last_row():
     board = make_board("W:W22:B18,10")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 22)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 22))
 
     # Цепочка не касается дамочного ряда, поэтому шашка остаётся простой.
     assert moves == [
@@ -192,9 +175,7 @@ def test_white_man_stays_man_when_chain_ends_off_last_row():
 def test_black_man_promotes_when_chain_ends_on_last_row():
     board = make_board("B:B22:W26")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 22)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 22))
 
     assert moves == [
         capture_move(
@@ -211,9 +192,7 @@ def test_black_man_promotes_when_chain_ends_on_last_row():
 def test_black_man_continues_capture_as_king_after_promotion():
     board = make_board("B:B21:W25,23")
 
-    moves = RussianManCapture(board).generate_moves(
-        board, square_index(board, 21)
-    )
+    moves = RussianManCapture(board).generate_moves(board, square_index(board, 21))
 
     # Чёрная шашка бьёт 25, попадает на последний ряд, становится дамкой и
     # продолжает бой на расстояние: бьёт 23 с полей 19, 16 или 12.

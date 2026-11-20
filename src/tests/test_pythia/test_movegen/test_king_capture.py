@@ -14,9 +14,7 @@ def square_index(board: DamBoard, number: int) -> int:
     raise AssertionError(f"На доске нет поля {number}")
 
 
-def make_board(
-    position: str, board_size: BoardSize = BoardSize.STANDARD
-) -> DamBoard:
+def make_board(position: str, board_size: BoardSize = BoardSize.STANDARD) -> DamBoard:
     board = DamBoard(board_size=board_size)
     board.setup(position)
     return board
@@ -45,8 +43,7 @@ def capture_move(
         before_state=state,
         after_state=state,
         taken=[
-            (square_index(board, number), taken_state)
-            for number, taken_state in taken
+            (square_index(board, number), taken_state) for number, taken_state in taken
         ],
     )
 

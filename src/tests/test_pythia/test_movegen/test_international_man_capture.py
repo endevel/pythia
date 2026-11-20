@@ -45,8 +45,7 @@ def capture_move(
         before_state=before_state,
         after_state=after_state,
         taken=[
-            (square_index(board, number), taken_state)
-            for number, taken_state in taken
+            (square_index(board, number), taken_state) for number, taken_state in taken
         ],
     )
 
@@ -153,9 +152,7 @@ def test_white_man_promotes_when_cannot_continue_on_last_row():
 def test_white_man_continues_capture_on_last_row_and_stays_man():
     board = make_board("W:W9:B6,7")
 
-    moves = InternationalManCapture(board).generate_moves(
-        board, square_index(board, 9)
-    )
+    moves = InternationalManCapture(board).generate_moves(board, square_index(board, 9))
 
     # Достигнув дамочного ряда, шашка обязана продолжить бой как простая.
     # Цепочка заканчивается вне дамочного ряда, поэтому дамкой она не стала.

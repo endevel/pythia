@@ -73,9 +73,7 @@ class InterruptingSearch(SearchBestMove):
         self.calls += 1
         if self.calls == 3:
             raise SearchTimeout
-        return super()._negamax(
-            board, depth, alpha, beta, ply, deadline
-        )
+        return super()._negamax(board, depth, alpha, beta, ply, deadline)
 
 
 def test_calculate_returns_legal_move():

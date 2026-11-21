@@ -1,8 +1,7 @@
 from enum import Enum
 
-from pythia.damboard.board_size import BoardSize
-from pythia.movegen.rules import RUSSIAN, INTERNATIONAL
-
+from pythia.core.board_size import BoardSize
+from pythia.core.rules import Rules
 
 class GameType(Enum):
     BRAZILIAN = (0,)
@@ -19,10 +18,12 @@ class GameType(Enum):
             return BoardSize.STANDARD
 
     @property
-    def rules(self):
+    def rules(self) -> Rules:
         if self == GameType.BRAZILIAN:
-            return RUSSIAN
+            return Rules.INTERNATIONAL
         elif self == GameType.INTERNATIONAL:
-            return INTERNATIONAL
+            return Rules.INTERNATIONAL
         elif self == GameType.RUSSIAN:
-            return RUSSIAN
+            return Rules.RUSSIAN
+        else:
+            raise ValueError("Invalid game type")

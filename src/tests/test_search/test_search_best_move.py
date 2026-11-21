@@ -82,3 +82,17 @@ def test_accepts_move_generator_class():
 
     assert move is not None
     assert board.number_at(move.from_square) == 22
+
+
+def test_capture_is_searched_even_when_depth_is_exhausted():
+    # После тихого 9-6 у чёрных появляется обязательное взятие 2x9,
+    # которое отыгрывает шашку. Поиск не должен останавливаться на
+    # статической оценке позиции после хода белых, пока в ней есть
+    # ударные ходы, поэтому при depth=1 выбирается безопасное 9-5.
+    board = make_board("W:W9,10:B1,2")
+
+    move = make_search(board).search_best_move(board, depth=1)
+
+    assert move is not None
+    assert board.number_at(move.from_square) == 9
+    assert board.number_at(move.to_square) == 5

@@ -1,5 +1,6 @@
 from pythia.core.board_size import BoardSize
 from pythia.core.game_type import GameType
+from pythia.core.move import move_to_str
 from pythia.damboard.damboard import DamBoard
 from pythia.evaluation.evaluation import Evaluation
 from pythia.evaluation.international_evaluation import InternationalEvaluation
@@ -78,6 +79,13 @@ class Engine:
     def _create_move_searcher(self) -> SearchBestMove:
         return SearchBestMove(self._move_generator, self._evaluator)
 
+    def calculate_best_move(self) -> None:
+        best_move = self._move_searcher.calculate(self._board)
+        if best_move is None:
+            print("Допустимых ходов нет")
+            return
+        print(move_to_str(best_move, self._board))
+
     def run(self) -> None:
         ending: bool = False
         while not ending:
@@ -114,7 +122,8 @@ class Engine:
                 else:
                     print("Привет, мир!")
             elif command == "do_move":
-                self._handle_do_move(args)
+                print("Выполняем ход...")
+                self.calculate_best_move()
             else:
                 print(f"Неизвестная команда: {command}. Введите 'help'.")
 
